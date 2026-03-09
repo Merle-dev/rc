@@ -40,9 +40,24 @@ fn ident(input: &str) -> IResult<&str, &str> {
 fn parse_fn_def(input: &str) -> IResult<&str, Vec<Token>> {
     let (input, _) = preceded(multispace0, tag("fn")).parse(input)?;
     let (input, name) = ident(input)?;
+    Ok((input, vec![Token::Fn, Token::Ident(name.to_string())]))
+}
+
+fn parse_enum_def(input: &str) -> IResult<&str, Vec<Token>> {
+    let (input, _) = preceded(multispace0, tag("enum")).parse(input)?;
+    let (input, name) = ident(input)?;
     Ok((
         input,
-        vec![Token::Fn, Token::FnDefinition(name.to_string())],
+        vec![Token::EnumDefinition, Token::Ident(name.to_owned())],
+    ))
+}
+
+fn parse_struct_def(input: &str) -> IResult<&str, Vec<Token>> {
+    let (input, _) = preceded(multispace0, tag("struct")).parse(input)?;
+    let (input, name) = ident(input)?;
+    Ok((
+        input,
+        vec![Token::StructDefinition, Token::Ident(name.to_owned())],
     ))
 }
 
@@ -50,27 +65,27 @@ fn parse_let(input: &str) -> IResult<&str, Vec<Token>> {
     let (input, _) = preceded(multispace0, tag("let")).parse(input)?;
     let (input, name) = ident(input)?;
     let (input, _) = preceded(multispace0, char('=')).parse(input)?;
-    // let (input, value) = parse_string(input)?;
     Ok((
         input,
-        vec![
-            Token::Let,
-            Token::VariableName(name.to_string()),
-            Token::Equals,
-            // value,
-        ],
+        vec![Token::Let, Token::Ident(name.to_string()), Token::Equals],
     ))
+}
+
+fn parse_assignment(input: &str) -> IResult<&str, Vec<Token>> {
+    let (input, name) = ident(input)?;
+    let (input, _) = preceded(multispace0, char('=')).parse(input)?;
+    Ok((input, vec![Token::Ident(name.to_string()), Token::Equals]))
 }
 
 fn parse_fn_call(input: &str) -> IResult<&str, Token> {
     let (input, name) = ident(input)?;
     // peek: confirm `(` follows without consuming it
     preceded(multispace0, char('(')).parse(input)?;
-    Ok((input, Token::FnCall(name.to_string())))
+    Ok((input, Token::Ident(name.to_string())))
 }
 
 fn parse_variable(input: &str) -> IResult<&str, Token> {
-    map(ident, |name: &str| Token::VariableName(name.to_string())).parse(input)
+    map(ident, |name: &str| Token::Ident(name.to_string())).parse(input)
 }
 
 fn parse_string(input: &str) -> IResult<&str, Token> {
@@ -82,7 +97,7 @@ fn parse_string(input: &str) -> IResult<&str, Token> {
     Ok((input, Token::StringIndex(intern(s))))
 }
 
-fn parse_punct(input: &str) -> IResult<&str, Token> {
+fn parse_delimiters(input: &str) -> IResult<&str, Token> {
     preceded(
         multispace0,
         alt((
@@ -90,25 +105,68 @@ fn parse_punct(input: &str) -> IResult<&str, Token> {
             map(char(')'), |_| Token::RParen),
             map(char('{'), |_| Token::LBrace),
             map(char('}'), |_| Token::RBrace),
+            map(char('['), |_| Token::LBracket),
+            map(char(']'), |_| Token::RBracket),
+        )),
+    )
+    .parse(input)
+}
+fn parse_operators(input: &str) -> IResult<&str, Token> {
+    preceded(
+        multispace0,
+        alt((
+            map(char('!'), |_| Token::Not),
+            map(tag("&&"), |_| Token::AndCmp),
+            map(tag("||"), |_| Token::OrCmp),
+            map(char('+'), |_| Token::Plus),
+            map(char('-'), |_| Token::Minus),
+            map(char('*'), |_| Token::Multiply),
+            map(char('/'), |_| Token::Divide),
+            map(char('%'), |_| Token::Modulo),
+            map(char('<'), |_| Token::Less),
+            map(char('>'), |_| Token::Greater),
+            map(char('?'), |_| Token::QuestionMark),
+        )),
+    )
+    .parse(input)
+}
+
+fn parse_punctuation(input: &str) -> IResult<&str, Token> {
+    preceded(
+        multispace0,
+        alt((
             map(char(','), |_| Token::Comma),
             map(char(':'), |_| Token::Colon),
             map(char(';'), |_| Token::SemiColon),
+            map(char('\''), |_| Token::Apostrophe),
+            map(tag("::"), |_| Token::Namespace),
+            map(tag("->"), |_| Token::Arrow),
+            map(tag("=>"), |_| Token::FatArrow),
         )),
     )
     .parse(input)
 }
 
 fn parse_token(input: &str) -> IResult<&str, Vec<Token>> {
-    if let Ok((rest, tokens)) = parse_fn_def(input) {
-        return Ok((rest, tokens));
+    let double_arg_functions = [
+        parse_fn_def,
+        parse_enum_def,
+        parse_struct_def,
+        parse_let,
+        parse_assignment,
+    ];
+    for f in double_arg_functions.into_iter() {
+        if let Ok((rest, tokens)) = f(input) {
+            return Ok((rest, tokens));
+        }
     }
-    if let Ok((rest, tokens)) = parse_let(input) {
-        return Ok((rest, tokens));
-    }
+
     let (input, tok) = alt((
         parse_string,
-        parse_punct,
-        parse_fn_call, // before parse_variable — both read an ident
+        parse_punctuation,
+        parse_delimiters,
+        parse_operators,
+        parse_fn_call,
         parse_variable,
     ))
     .parse(input)?;

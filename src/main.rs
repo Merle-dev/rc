@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 mod lexer;
 mod parser;
+mod parsing;
 mod pattern_macro;
 
 use parser::ParserMonad;
@@ -11,25 +12,51 @@ use crate::lexer::{STRING_TABLE, tokenize};
 #[derive(Clone, Debug, PartialEq)]
 enum Token {
     Fn,
-    FnCall(String),
-    FnDefinition(String),
+    StringIndex(usize),
+    Ident(String),
+    Let,
+    EnumDefinition,
+    StructDefinition,
+
     LParen,
     RParen,
     LBrace,
     RBrace,
-    Let,
-    VariableName(String),
+    LBracket,
+    RBracket,
+
     Equals,
     Comma,
     Colon,
     SemiColon,
-    StringIndex(usize),
+    FatArrow,
+    Arrow,
+    Apostrophe,
+    Namespace,
+
+    Not,
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Modulo,
+    Less,
+    Greater,
+    AndCmp,
+    OrCmp,
+    QuestionMark,
 }
 
 fn main() {
     // let a = fn f() { let a = "inside_function"; };
     let text = r#"
-        fn main(b: get_type()) {
+        struct Parser {
+            tokens: Tokens,
+            sit: String,
+        }
+
+        fn main() {
+            let a = E::A;
             println("Hello");
         }
     "#;
@@ -40,7 +67,9 @@ fn main() {
             tokens: &tokens[..],
             string_interning_store: STRING_TABLE.take()
         }
-        .parse()
+        .parse_file()
+        .unwrap()
+        .0
     );
 
     // let result = ParserMonad {
