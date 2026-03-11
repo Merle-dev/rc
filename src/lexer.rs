@@ -2,9 +2,10 @@ use nom::{
     IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_until, take_while1},
-    character::complete::{char, multispace0},
-    combinator::map,
-    sequence::{delimited, preceded},
+    character::complete::{char, digit1, multispace0},
+    combinator::{map, recognize},
+    number::complete::double,
+    sequence::{delimited, preceded, tuple},
 };
 use std::cell::RefCell;
 
@@ -37,10 +38,44 @@ fn ident(input: &str) -> IResult<&str, &str> {
     preceded(multispace0, take_while1(is_ident_char)).parse(input)
 }
 
+fn parse_float(input: &str) -> IResult<&str, Token> {
+    let (input, s) = preceded(
+        multispace0,
+        recognize((
+            take_while1(|c: char| c.is_ascii_digit()),
+            char('.'),
+            take_while1(|c: char| c.is_ascii_digit()),
+        )),
+    )
+    .parse(input)?;
+
+    let n = s.parse::<f64>().map_err(|_| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Float))
+    })?;
+
+    Ok((input, Token::Float(n)))
+}
+
+fn parse_integer(input: &str) -> IResult<&str, Token> {
+    let (input, s) =
+        preceded(multispace0, take_while1(|c: char| c.is_ascii_digit())).parse(input)?;
+
+    let n = s.parse::<i128>().map_err(|_| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Digit))
+    })?;
+
+    Ok((input, Token::Integer(n)))
+}
+
 fn parse_fn_def(input: &str) -> IResult<&str, Vec<Token>> {
     let (input, _) = preceded(multispace0, tag("fn")).parse(input)?;
     let (input, name) = ident(input)?;
     Ok((input, vec![Token::Fn, Token::Ident(name.to_string())]))
+}
+
+fn parse_fn(input: &str) -> IResult<&str, Vec<Token>> {
+    let (input, _) = preceded(multispace0, tag("fn")).parse(input)?;
+    Ok((input, vec![Token::Fn]))
 }
 
 fn parse_enum_def(input: &str) -> IResult<&str, Vec<Token>> {
@@ -71,10 +106,9 @@ fn parse_let(input: &str) -> IResult<&str, Vec<Token>> {
     ))
 }
 
-fn parse_assignment(input: &str) -> IResult<&str, Vec<Token>> {
-    let (input, name) = ident(input)?;
-    let (input, _) = preceded(multispace0, char('=')).parse(input)?;
-    Ok((input, vec![Token::Ident(name.to_string()), Token::Equals]))
+fn parse_return(input: &str) -> IResult<&str, Token> {
+    let (input, _) = preceded(multispace0, tag("return")).parse(input)?;
+    Ok((input, Token::Return))
 }
 
 fn parse_fn_call(input: &str) -> IResult<&str, Token> {
@@ -150,10 +184,10 @@ fn parse_punctuation(input: &str) -> IResult<&str, Token> {
 fn parse_token(input: &str) -> IResult<&str, Vec<Token>> {
     let double_arg_functions = [
         parse_fn_def,
+        parse_fn,
         parse_enum_def,
         parse_struct_def,
         parse_let,
-        parse_assignment,
     ];
     for f in double_arg_functions.into_iter() {
         if let Ok((rest, tokens)) = f(input) {
@@ -162,12 +196,15 @@ fn parse_token(input: &str) -> IResult<&str, Vec<Token>> {
     }
 
     let (input, tok) = alt((
+        parse_float,
+        parse_integer,
         parse_string,
         parse_punctuation,
         parse_delimiters,
         parse_operators,
         parse_fn_call,
         parse_variable,
+        parse_return,
     ))
     .parse(input)?;
     Ok((input, vec![tok]))

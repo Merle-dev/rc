@@ -8,7 +8,7 @@ macro_rules! pattern {
                 if let $enum_name::$variant = first {
                     Ok((rest, ()))
                 } else {
-                    Err(format!("Expected {}, but found {:?}", stringify!($variant), first))
+                    Err(format!("[{}:{}] Expected {}, but found {:?}",file!(), line!(), stringify!($variant), first))
                 }
             })
     };
@@ -21,7 +21,7 @@ macro_rules! pattern {
                 if let $enum_name::$variant($binding) = first {
                     Ok((rest, $binding))
                 } else {
-                    Err(format!("Expected {}, but found {:?}", stringify!($variant), first))
+                    Err(format!("[{}:{}] Expected {}, but found {:?}",file!(), line!(), stringify!($variant), first))
 
                 }
             })
@@ -38,7 +38,7 @@ macro_rules! pattern {
                     // for the struct variant.
                     Ok((rest, ($($field.clone()),*)))
                 } else {
-                    Err(format!("Expected {}, but found {:?}", stringify!($variant), first))
+                    Err(format!("Expected {}, but found {:?}   [{}:{}]", stringify!($variant), first,file!(), line!(), ))
                 }
             })
     };
